@@ -465,23 +465,47 @@ with tab2:
     uploaded_file = st.file_uploader("Tölts fel egy videót (mp4, mov)", type=["mp4", "mov"])
     
     if uploaded_file is not None:
-        # --- ÚJ: Eredeti videó előnézete ---
-        st.markdown("**Feltöltött videó előnézete:**")
-        st.video(uploaded_file)
+        import tempfile
+        import os
+        
+        # Kiolvassuk a bytokat a memóriába, hogy többször is felhasználhassuk
+        file_bytes = uploaded_file.read()
+        
+        # --- 1. JAVÍTÁS: Nyers előnézet (Hogyan látja az OpenCV) ---
+        col_prev1, col_prev2 = st.columns(2)
+        with col_prev1:
+            st.markdown("**1. Böngésző előnézete:**")
+            st.video(file_bytes)
+            
+        with col_prev2:
+            st.markdown("**2. A program így látja (Nyers kép):**")
+            tfile_prev = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") 
+            tfile_prev.write(file_bytes)
+            tfile_prev.close()
+            
+            cap_prev = cv2.VideoCapture(tfile_prev.name)
+            ret_prev, frame_prev = cap_prev.read()
+            cap_prev.release()
+            
+            if ret_prev:
+                # Ezt a képet látja az AI. Ha itt fekszik, forgatni kell!
+                st.image(cv2.cvtColor(frame_prev, cv2.COLOR_BGR2RGB), use_container_width=True)
+                st.info("💡 Tipp: Ha a fenti 2. kép fekve van, forgasd el a lenti menüben, hogy álló legyen!")
+            else:
+                st.error("Nem sikerült előnézetet generálni a nyers fájlból.")
+                
         st.markdown("---")
         
         # --- Forgatás opció ---
         rotation_option = st.selectbox(
-            "🔄 Videó elforgatása (Ha a fenti előnézetben, vagy a felhőben fekve jelenik meg)",
+            "🔄 Nyers videó elforgatása (Az OpenCV előnézet alapján)",
             ["Nincs forgatás", "90 fok jobbra", "180 fok", "90 fok balra"]
         )
         
         if st.button("Videó feldolgozása indít", use_container_width=True):
-            import tempfile
-            import os
             
             tfile_in = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") 
-            tfile_in.write(uploaded_file.read())
+            tfile_in.write(file_bytes) 
             tfile_in.close() 
             
             tfile_out = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
@@ -496,9 +520,9 @@ with tab2:
             v_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             v_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             
-            # --- BIZTONSÁGI ELLENŐRZÉS (HEVC/H.265 védelem) ---
+            # --- BIZTONSÁGI ELLENŐRZÉS ---
             if total_frames == 0:
-                st.error("❌ A szerver nem tudta beolvasni a videót. Valószínűleg egy nem támogatott Apple HEVC (H.265) formátum. Kérlek konvertáld át sima H.264 MP4-be, vagy kapcsold ki a telefonodon a High Efficiency formátumot!")
+                st.error("❌ A szerver nem tudta beolvasni a videót. Valószínűleg egy Apple HEVC (H.265) formátum. Kérlek konvertáld át sima MP4-be!")
                 cap.release()
             else:
                 # Felbontás megfordítása, ha 90 fokkal forgatunk
@@ -554,10 +578,13 @@ with tab2:
                     
                     out_video.write(out_frame)
                     
-                    # --- JAVÍTÁS: Képfrissítés ritkítása a felhő miatt ---
-                    # Csak minden 3. képkockát küldünk át a böngészőnek
-                    if frame_idx % 3 == 0:
-                        stframe.image(cv2.cvtColor(out_frame, cv2.COLOR_BGR2RGB), channels="RGB")
+                    # --- 2. JAVÍTÁS: Képfrissítés ritkítása és butítása a felhő miatt ---
+                    # Csak minden 15. képkockát küldjük a böngészőnek (gyorsabb átvitel)
+                    if frame_idx % 15 == 0:
+                        preview_width = max(int(v_width / 2), 1)
+                        preview_height = max(int(v_height / 2), 1)
+                        preview_img = cv2.resize(out_frame, (preview_width, preview_height))
+                        stframe.image(cv2.cvtColor(preview_img, cv2.COLOR_BGR2RGB), channels="RGB")
                     
                     if total_frames > 0:
                         progress = min(frame_idx / total_frames, 1.0)
