@@ -465,6 +465,12 @@ with tab2:
     uploaded_file = st.file_uploader("Tölts fel egy videót (mp4, mov)", type=["mp4", "mov"])
     
     if uploaded_file is not None:
+        # --- ÚJ: Forgatás opció ---
+        rotation_option = st.selectbox(
+            "🔄 Videó elforgatása (Ha a felhőben fekve jelenik meg)",
+            ["Nincs forgatás", "90 fok jobbra", "180 fok", "90 fok balra"]
+        )
+        
         if st.button("Videó feldolgozása indít", use_container_width=True):
             import tempfile
             import os
@@ -485,6 +491,10 @@ with tab2:
             v_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             v_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             
+            # --- ÚJ: Felbontás megfordítása, ha 90 fokkal forgatunk ---
+            if rotation_option in ["90 fok jobbra", "90 fok balra"]:
+                v_width, v_height = v_height, v_width
+            
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             out_video = cv2.VideoWriter(tfile_out_name, fourcc, fps, (v_width, v_height))
             
@@ -495,7 +505,6 @@ with tab2:
             
             score_history = [] 
             
-            # --- ÚJ: Változók a legrosszabb képkocka megtalálásához ---
             max_recorded_score = -1
             worst_frame_image = None
             worst_frame_idx = 0
@@ -504,6 +513,14 @@ with tab2:
                 ret, frame = cap.read()
                 if not ret:
                     break
+                
+                # --- ÚJ: Képkocka fizikai forgatása ---
+                if rotation_option == "90 fok jobbra":
+                    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                elif rotation_option == "180 fok":
+                    frame = cv2.rotate(frame, cv2.ROTATE_180)
+                elif rotation_option == "90 fok balra":
+                    frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
                 
                 frame_idx += 1
                 
@@ -520,11 +537,10 @@ with tab2:
                 if log_row is not None:
                     st.session_state.log_data.append(log_row)
                     
-                    # --- ÚJ: Figyeljük a legmagasabb pontszámot ---
                     current_score = log_row["Végső_Pontszám"]
                     if current_score > max_recorded_score:
                         max_recorded_score = current_score
-                        worst_frame_image = out_frame.copy() # Lementjük magát a képet is!
+                        worst_frame_image = out_frame.copy() 
                         worst_frame_idx = frame_idx
                 
                 out_video.write(out_frame)
@@ -542,7 +558,6 @@ with tab2:
             
             col_vid, col_img = st.columns(2)
             
-            # 1. Feldolgozott videó letöltése
             with col_vid:
                 with open(tfile_out_name, "rb") as video_file:
                     video_bytes = video_file.read()
@@ -555,13 +570,11 @@ with tab2:
                     use_container_width=True
                 )
             
-            # --- ÚJ: 2. Legrosszabb képkocka megjelenítése és letöltése ---
             if worst_frame_image is not None:
                 st.markdown("---")
                 st.subheader(f"⚠️ Legveszélyesebb mozdulat (Képkocka: {worst_frame_idx})")
                 st.image(cv2.cvtColor(worst_frame_image, cv2.COLOR_BGR2RGB), caption=f"Maximum mért pontszám: {max_recorded_score}")
                 
-                # Kép átalakítása letölthető formátummá (JPG)
                 is_success, buffer = cv2.imencode(".jpg", worst_frame_image)
                 if is_success:
                     with col_img:
