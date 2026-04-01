@@ -610,6 +610,8 @@ with tab2:
                         use_container_width=True
                     )
                 
+                # ... (itt van a legrosszabb képkocka letöltése) ...
+                
                 if worst_frame_image is not None:
                     st.markdown("---")
                     st.subheader(f"⚠️ Legveszélyesebb mozdulat (Képkocka: {worst_frame_idx})")
@@ -625,6 +627,15 @@ with tab2:
                                 mime="image/jpeg",
                                 use_container_width=True
                             )
+                            
+                # --- ÚJ: SZEMÉTSZÁLLÍTÁS (Memória felszabadítása) ---
+                # Miután mindent beolvastunk a memóriába, letöröljük a fizikai fájlokat a szerverről!
+                try:
+                    os.remove(tfile_in.name)
+                    os.remove(tfile_out_name)
+                    os.remove(tfile_prev.name)
+                except Exception as e:
+                    pass # Ha valamiért nem találja, csendben továbbmegy
                         
 # --- 5. ADATOK EXPORTÁLÁSA ÉS VIZUALIZÁCIÓ ---
 st.markdown("---")
